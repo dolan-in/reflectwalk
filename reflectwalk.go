@@ -49,8 +49,8 @@ type ArrayWalker interface {
 // StructWalker is an interface that has methods that are called for
 // structs when a Walk is done.
 type StructWalker interface {
-	Struct(reflect.Value) error
-	StructField(reflect.StructField, reflect.Value) error
+	Struct(structValue reflect.Value, level int) error
+	StructField(structField reflect.StructField, fieldValue, parentValue reflect.Value, level int) error
 }
 
 // EnterExitWalker implementations are notified before and after
@@ -99,7 +99,7 @@ func Walk(data, walker interface{}) (err error) {
 	return
 }
 
-func walk(v reflect.Value, w interface{}) (err error) {
+func walk(v reflect.Value, w interface{}, level ...int) (err error) {
 	// Determine if we're receiving a pointer and if so notify the walker.
 	// The logic here is convoluted but very important (tests will fail if
 	// almost any part is changed). I will try to explain here.
@@ -173,6 +173,11 @@ func walk(v reflect.Value, w interface{}) (err error) {
 		k = reflect.Int
 	}
 
+	lvl := 0
+	if len(level) > 0 {
+		lvl = level[0]
+	}
+
 	switch k {
 	// Primitives
 	case reflect.Bool, reflect.Chan, reflect.Func, reflect.Int, reflect.String, reflect.Invalid:
@@ -185,7 +190,7 @@ func walk(v reflect.Value, w interface{}) (err error) {
 		err = walkSlice(v, w)
 		return
 	case reflect.Struct:
-		err = walkStruct(v, w)
+		err = walkStruct(v, w, lvl)
 		return
 	case reflect.Array:
 		err = walkArray(v, w)
@@ -341,7 +346,7 @@ func walkArray(v reflect.Value, w interface{}) (err error) {
 	return nil
 }
 
-func walkStruct(v reflect.Value, w interface{}) (err error) {
+func walkStruct(v reflect.Value, w interface{}, level int) (err error) {
 	ew, ewok := w.(EnterExitWalker)
 	if ewok {
 		ew.Enter(Struct)
@@ -349,7 +354,7 @@ func walkStruct(v reflect.Value, w interface{}) (err error) {
 
 	skip := false
 	if sw, ok := w.(StructWalker); ok {
-		err = sw.Struct(v)
+		err = sw.Struct(v, level)
 		if err == SkipEntry {
 			skip = true
 			err = nil
@@ -363,10 +368,10 @@ func walkStruct(v reflect.Value, w interface{}) (err error) {
 		vt := v.Type()
 		for i := 0; i < vt.NumField(); i++ {
 			sf := vt.Field(i)
-			f := v.FieldByIndex([]int{i})
+			f := v.Field(i)
 
 			if sw, ok := w.(StructWalker); ok {
-				err = sw.StructField(sf, f)
+				err = sw.StructField(sf, f, v, level)
 
 				// SkipEntry just pretends this field doesn't even exist
 				if err == SkipEntry {
@@ -383,7 +388,7 @@ func walkStruct(v reflect.Value, w interface{}) (err error) {
 				ew.Enter(StructField)
 			}
 
-			err = walk(f, w)
+			err = walk(f, w, level+1)
 			if err != nil {
 				return
 			}
