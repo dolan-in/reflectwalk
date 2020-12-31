@@ -145,11 +145,11 @@ type TestStructWalker struct {
 	Fields []string
 }
 
-func (t *TestStructWalker) Struct(v reflect.Value) error {
+func (t *TestStructWalker) Struct(v reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestStructWalker) StructField(sf reflect.StructField, v reflect.Value) error {
+func (t *TestStructWalker) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
 	if t.Fields == nil {
 		t.Fields = make([]string, 0, 1)
 	}
@@ -738,11 +738,11 @@ func (t *TestStructWalker_fieldSkip) Exit(Location) error {
 	return nil
 }
 
-func (t *TestStructWalker_fieldSkip) Struct(v reflect.Value) error {
+func (t *TestStructWalker_fieldSkip) Struct(v reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestStructWalker_fieldSkip) StructField(sf reflect.StructField, v reflect.Value) error {
+func (t *TestStructWalker_fieldSkip) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
 	if t.Skip && sf.Name[0] == '_' {
 		return SkipEntry
 	}
@@ -799,7 +799,7 @@ func (t *TestStructWalker_valueSkip) Exit(Location) error {
 	return nil
 }
 
-func (t *TestStructWalker_valueSkip) Struct(v reflect.Value) error {
+func (t *TestStructWalker_valueSkip) Struct(v reflect.Value, level int) error {
 	if t.Skip {
 		return SkipEntry
 	}
@@ -807,7 +807,7 @@ func (t *TestStructWalker_valueSkip) Struct(v reflect.Value) error {
 	return nil
 }
 
-func (t *TestStructWalker_valueSkip) StructField(sf reflect.StructField, v reflect.Value) error {
+func (t *TestStructWalker_valueSkip) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
 	return nil
 }
 
@@ -839,6 +839,79 @@ func TestWalk_StructParentWithSkipEntry(t *testing.T) {
 
 		if s.Fields != 0 {
 			t.Fatalf("bad: %d", s.Fields)
+		}
+	}
+}
+
+type TestStructWalker_depth struct {
+	Depth int
+}
+
+func (t *TestStructWalker_depth) Struct(v reflect.Value, level int) error {
+	return nil
+}
+
+func (t *TestStructWalker_depth) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
+	if level > t.Depth {
+		t.Depth = level
+	}
+	return nil
+}
+
+func TestWalk_StructParentWithDepth(t *testing.T) {
+	type nestedStruct struct {
+		Foo       int
+		Bar       int
+		Substruct *nestedStruct
+	}
+
+	testCases := []struct {
+		data      *nestedStruct
+		wantDepth int
+	}{
+		{
+			data: &nestedStruct{
+				Foo: 1,
+				Bar: 2,
+			},
+			wantDepth: 0,
+		},
+		{
+			data: &nestedStruct{
+				Foo: 1,
+				Bar: 2,
+				Substruct: &nestedStruct{
+					Foo: 1,
+					Bar: 2,
+				},
+			},
+			wantDepth: 1,
+		},
+		{
+			data: &nestedStruct{
+				Foo: 1,
+				Bar: 2,
+				Substruct: &nestedStruct{
+					Foo: 1,
+					Bar: 2,
+					Substruct: &nestedStruct{
+						Foo: 1,
+						Bar: 2,
+					},
+				},
+			},
+			wantDepth: 2,
+		},
+	}
+
+	for _, testCase := range testCases {
+		var s TestStructWalker_depth
+		if err := Walk(testCase.data, &s); err != nil {
+			t.Fatalf("err: %s", err)
+		}
+
+		if s.Depth != testCase.wantDepth {
+			t.Fatalf("bad: %d, want: %d", s.Depth, testCase.wantDepth)
 		}
 	}
 }
