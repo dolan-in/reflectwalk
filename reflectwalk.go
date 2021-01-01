@@ -1,4 +1,4 @@
-// reflectwalk is a package that allows you to "walk" complex structures
+// Package reflectwalk is a package that allows you to "walk" complex structures
 // similar to how you may "walk" a filesystem: visiting every element one
 // by one and calling callback functions allowing you to handle and manipulate
 // those elements.
@@ -16,41 +16,41 @@ import (
 // These primitive values are often members of more complex
 // structures (slices, maps, etc.) that are walkable by other interfaces.
 type PrimitiveWalker interface {
-	Primitive(reflect.Value) error
+	Primitive(v reflect.Value, level int) error
 }
 
 // InterfaceWalker implementations are able to handle interface values as they
 // are encountered during the walk.
 type InterfaceWalker interface {
-	Interface(reflect.Value) error
+	Interface(v reflect.Value, level int) error
 }
 
 // MapWalker implementations are able to handle individual elements
 // found within a map structure.
 type MapWalker interface {
-	Map(m reflect.Value) error
-	MapElem(m, k, v reflect.Value) error
+	Map(m reflect.Value, level int) error
+	MapElem(m, k, v reflect.Value, level int) error
 }
 
 // SliceWalker implementations are able to handle slice elements found
 // within complex structures.
 type SliceWalker interface {
-	Slice(reflect.Value) error
-	SliceElem(int, reflect.Value) error
+	Slice(s reflect.Value, level int) error
+	SliceElem(s reflect.Value, i int, ev reflect.Value, level int) error
 }
 
 // ArrayWalker implementations are able to handle array elements found
 // within complex structures.
 type ArrayWalker interface {
-	Array(reflect.Value) error
-	ArrayElem(int, reflect.Value) error
+	Array(a reflect.Value, level int) error
+	ArrayElem(a reflect.Value, i int, ev reflect.Value, level int) error
 }
 
 // StructWalker is an interface that has methods that are called for
 // structs when a Walk is done.
 type StructWalker interface {
-	Struct(structValue reflect.Value, level int) error
-	StructField(structField reflect.StructField, fieldValue, parentValue reflect.Value, level int) error
+	Struct(s reflect.Value, level int) error
+	StructField(s reflect.Value, sf reflect.StructField, fv reflect.Value, level int) error
 }
 
 // EnterExitWalker implementations are notified before and after
@@ -118,10 +118,15 @@ func walk(v reflect.Value, w interface{}, level ...int) (err error) {
 	pointer := false
 	pointerV := v
 
+	lvl := 0
+	if len(level) > 0 {
+		lvl = level[0]
+	}
+
 	for {
 		if pointerV.Kind() == reflect.Interface {
 			if iw, ok := w.(InterfaceWalker); ok {
-				if err = iw.Interface(pointerV); err != nil {
+				if err = iw.Interface(pointerV, lvl); err != nil {
 					return
 				}
 			}
@@ -173,41 +178,36 @@ func walk(v reflect.Value, w interface{}, level ...int) (err error) {
 		k = reflect.Int
 	}
 
-	lvl := 0
-	if len(level) > 0 {
-		lvl = level[0]
-	}
-
 	switch k {
 	// Primitives
 	case reflect.Bool, reflect.Chan, reflect.Func, reflect.Int, reflect.String, reflect.Invalid:
-		err = walkPrimitive(originalV, w)
+		err = walkPrimitive(originalV, w, lvl)
 		return
 	case reflect.Map:
-		err = walkMap(v, w)
+		err = walkMap(v, w, lvl)
 		return
 	case reflect.Slice:
-		err = walkSlice(v, w)
+		err = walkSlice(v, w, lvl)
 		return
 	case reflect.Struct:
 		err = walkStruct(v, w, lvl)
 		return
 	case reflect.Array:
-		err = walkArray(v, w)
+		err = walkArray(v, w, lvl)
 		return
 	default:
 		panic("unsupported type: " + k.String())
 	}
 }
 
-func walkMap(v reflect.Value, w interface{}) error {
+func walkMap(v reflect.Value, w interface{}, level int) error {
 	ew, ewok := w.(EnterExitWalker)
 	if ewok {
 		ew.Enter(Map)
 	}
 
 	if mw, ok := w.(MapWalker); ok {
-		if err := mw.Map(v); err != nil {
+		if err := mw.Map(v, level); err != nil {
 			return err
 		}
 	}
@@ -216,7 +216,7 @@ func walkMap(v reflect.Value, w interface{}) error {
 		kv := v.MapIndex(k)
 
 		if mw, ok := w.(MapWalker); ok {
-			if err := mw.MapElem(v, k, kv); err != nil {
+			if err := mw.MapElem(v, k, kv, level); err != nil {
 				return err
 			}
 		}
@@ -236,7 +236,7 @@ func walkMap(v reflect.Value, w interface{}) error {
 		}
 
 		// get the map value again as it may have changed in the MapElem call
-		if err := walk(v.MapIndex(k), w); err != nil {
+		if err := walk(v.MapIndex(k), w, level); err != nil {
 			return err
 		}
 
@@ -252,22 +252,22 @@ func walkMap(v reflect.Value, w interface{}) error {
 	return nil
 }
 
-func walkPrimitive(v reflect.Value, w interface{}) error {
+func walkPrimitive(v reflect.Value, w interface{}, level int) error {
 	if pw, ok := w.(PrimitiveWalker); ok {
-		return pw.Primitive(v)
+		return pw.Primitive(v, level)
 	}
 
 	return nil
 }
 
-func walkSlice(v reflect.Value, w interface{}) (err error) {
+func walkSlice(v reflect.Value, w interface{}, level int) (err error) {
 	ew, ok := w.(EnterExitWalker)
 	if ok {
 		ew.Enter(Slice)
 	}
 
 	if sw, ok := w.(SliceWalker); ok {
-		if err := sw.Slice(v); err != nil {
+		if err := sw.Slice(v, level); err != nil {
 			return err
 		}
 	}
@@ -276,7 +276,7 @@ func walkSlice(v reflect.Value, w interface{}) (err error) {
 		elem := v.Index(i)
 
 		if sw, ok := w.(SliceWalker); ok {
-			if err := sw.SliceElem(i, elem); err != nil {
+			if err := sw.SliceElem(v, i, elem, level); err != nil {
 				return err
 			}
 		}
@@ -286,7 +286,7 @@ func walkSlice(v reflect.Value, w interface{}) (err error) {
 			ew.Enter(SliceElem)
 		}
 
-		if err := walk(elem, w); err != nil {
+		if err := walk(elem, w, level); err != nil {
 			return err
 		}
 
@@ -303,14 +303,14 @@ func walkSlice(v reflect.Value, w interface{}) (err error) {
 	return nil
 }
 
-func walkArray(v reflect.Value, w interface{}) (err error) {
+func walkArray(v reflect.Value, w interface{}, level int) (err error) {
 	ew, ok := w.(EnterExitWalker)
 	if ok {
 		ew.Enter(Array)
 	}
 
 	if aw, ok := w.(ArrayWalker); ok {
-		if err := aw.Array(v); err != nil {
+		if err := aw.Array(v, level); err != nil {
 			return err
 		}
 	}
@@ -319,7 +319,7 @@ func walkArray(v reflect.Value, w interface{}) (err error) {
 		elem := v.Index(i)
 
 		if aw, ok := w.(ArrayWalker); ok {
-			if err := aw.ArrayElem(i, elem); err != nil {
+			if err := aw.ArrayElem(v, i, elem, level); err != nil {
 				return err
 			}
 		}
@@ -329,7 +329,7 @@ func walkArray(v reflect.Value, w interface{}) (err error) {
 			ew.Enter(ArrayElem)
 		}
 
-		if err := walk(elem, w); err != nil {
+		if err := walk(elem, w, level); err != nil {
 			return err
 		}
 
@@ -371,7 +371,7 @@ func walkStruct(v reflect.Value, w interface{}, level int) (err error) {
 			f := v.Field(i)
 
 			if sw, ok := w.(StructWalker); ok {
-				err = sw.StructField(sf, f, v, level)
+				err = sw.StructField(v, sf, f, level)
 
 				// SkipEntry just pretends this field doesn't even exist
 				if err == SkipEntry {

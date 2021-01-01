@@ -53,7 +53,7 @@ type TestPrimitiveWalker struct {
 	Value reflect.Value
 }
 
-func (t *TestPrimitiveWalker) Primitive(v reflect.Value) error {
+func (t *TestPrimitiveWalker) Primitive(v reflect.Value, level int) error {
 	t.Value = v
 	return nil
 }
@@ -62,8 +62,8 @@ type TestPrimitiveCountWalker struct {
 	Count int
 }
 
-func (t *TestPrimitiveCountWalker) Primitive(v reflect.Value) error {
-	t.Count += 1
+func (t *TestPrimitiveCountWalker) Primitive(v reflect.Value, level int) error {
+	t.Count++
 	return nil
 }
 
@@ -71,7 +71,7 @@ type TestPrimitiveReplaceWalker struct {
 	Value reflect.Value
 }
 
-func (t *TestPrimitiveReplaceWalker) Primitive(v reflect.Value) error {
+func (t *TestPrimitiveReplaceWalker) Primitive(v reflect.Value, level int) error {
 	v.Set(reflect.ValueOf("bar"))
 	return nil
 }
@@ -82,12 +82,12 @@ type TestMapWalker struct {
 	Values map[string]bool
 }
 
-func (t *TestMapWalker) Map(m reflect.Value) error {
+func (t *TestMapWalker) Map(m reflect.Value, level int) error {
 	t.MapVal = m
 	return nil
 }
 
-func (t *TestMapWalker) MapElem(m, k, v reflect.Value) error {
+func (t *TestMapWalker) MapElem(m, k, v reflect.Value, level int) error {
 	if t.Keys == nil {
 		t.Keys = make(map[string]bool)
 		t.Values = make(map[string]bool)
@@ -102,11 +102,11 @@ type TestMapElemReplaceWalker struct {
 	ValueFn func(v reflect.Value) reflect.Value
 }
 
-func (t *TestMapElemReplaceWalker) Map(m reflect.Value) error {
+func (t *TestMapElemReplaceWalker) Map(m reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestMapElemReplaceWalker) MapElem(m, k, v reflect.Value) error {
+func (t *TestMapElemReplaceWalker) MapElem(m, k, v reflect.Value, level int) error {
 	m.SetMapIndex(k, t.ValueFn(v))
 	return nil
 }
@@ -116,12 +116,12 @@ type TestSliceWalker struct {
 	SliceVal reflect.Value
 }
 
-func (t *TestSliceWalker) Slice(v reflect.Value) error {
+func (t *TestSliceWalker) Slice(v reflect.Value, level int) error {
 	t.SliceVal = v
 	return nil
 }
 
-func (t *TestSliceWalker) SliceElem(int, reflect.Value) error {
+func (t *TestSliceWalker) SliceElem(reflect.Value, int, reflect.Value, int) error {
 	t.Count++
 	return nil
 }
@@ -131,12 +131,12 @@ type TestArrayWalker struct {
 	ArrayVal reflect.Value
 }
 
-func (t *TestArrayWalker) Array(v reflect.Value) error {
+func (t *TestArrayWalker) Array(v reflect.Value, level int) error {
 	t.ArrayVal = v
 	return nil
 }
 
-func (t *TestArrayWalker) ArrayElem(int, reflect.Value) error {
+func (t *TestArrayWalker) ArrayElem(reflect.Value, int, reflect.Value, int) error {
 	t.Count++
 	return nil
 }
@@ -149,7 +149,7 @@ func (t *TestStructWalker) Struct(v reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestStructWalker) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
+func (t *TestStructWalker) StructField(p reflect.Value, sf reflect.StructField, v reflect.Value, level int) error {
 	if t.Fields == nil {
 		t.Fields = make([]string, 0, 1)
 	}
@@ -666,12 +666,12 @@ type TestInterfaceMapWalker struct {
 	Values map[interface{}]bool
 }
 
-func (t *TestInterfaceMapWalker) Map(m reflect.Value) error {
+func (t *TestInterfaceMapWalker) Map(m reflect.Value, level int) error {
 	t.MapVal = m
 	return nil
 }
 
-func (t *TestInterfaceMapWalker) MapElem(m, k, v reflect.Value) error {
+func (t *TestInterfaceMapWalker) MapElem(m, k, v reflect.Value, level int) error {
 	if t.Keys == nil {
 		t.Keys = make(map[string]bool)
 		t.Values = make(map[interface{}]bool)
@@ -742,7 +742,7 @@ func (t *TestStructWalker_fieldSkip) Struct(v reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestStructWalker_fieldSkip) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
+func (t *TestStructWalker_fieldSkip) StructField(p reflect.Value, sf reflect.StructField, v reflect.Value, level int) error {
 	if t.Skip && sf.Name[0] == '_' {
 		return SkipEntry
 	}
@@ -807,7 +807,7 @@ func (t *TestStructWalker_valueSkip) Struct(v reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestStructWalker_valueSkip) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
+func (t *TestStructWalker_valueSkip) StructField(p reflect.Value, sf reflect.StructField, v reflect.Value, level int) error {
 	return nil
 }
 
@@ -851,7 +851,7 @@ func (t *TestStructWalker_depth) Struct(v reflect.Value, level int) error {
 	return nil
 }
 
-func (t *TestStructWalker_depth) StructField(sf reflect.StructField, v, p reflect.Value, level int) error {
+func (t *TestStructWalker_depth) StructField(p reflect.Value, sf reflect.StructField, v reflect.Value, level int) error {
 	if level > t.Depth {
 		t.Depth = level
 	}
